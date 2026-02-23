@@ -1,103 +1,210 @@
+import java.util.*;
+
 class Student {
-    String uid;
-    String name;
-    int fineAmount;
-    int currentBorrowCount;
-    void checkPolicies() throws IllegalStateException {
-        if(fineAmount > 0) {
-            throw new IllegalStateException();
-        }        if(currentBorrowCount >= 2) {
-            throw new IllegalStateException();
+    String studentid;
+    String studentname;
+    int pendingfine;
+    int borroweditems;
+
+    public Student(String studentid, String studentname, int pendingfine, int borroweditems) {
+        this.studentid = studentid;
+        this.studentname = studentname;
+        this.pendingfine = pendingfine;
+        this.borroweditems = borroweditems;
+    }
+
+    public void checkeligibility() {
+        if (pendingfine > 0) {
+            throw new IllegalStateException("Student has pending fine.");
         }
+        if (borroweditems >= 2) {
+            throw new IllegalStateException("Borrow limit reached.");
+        }
+    }
+
+    public void increaseborrowcount() {
+        borroweditems++;
     }
 }
 
 class Asset {
-    String assetId;
-    String assetName;
-    boolean available;
-    int securityLevel;
-    void checkPolicies(String uid) throws IllegalStateException, SecurityException {
-        if(!available) {
-            throw new IllegalStateException();
+    String id;
+    String name;
+    boolean isavailable;
+    int securitylevel;
+
+    public Asset(String id, String name, boolean isavailable, int securitylevel) {
+        this.id = id;
+        this.name = name;
+        this.isavailable = isavailable;
+        this.securitylevel = securitylevel;
+    }
+
+    public void checkaccess(String studentid) {
+        if (!isavailable) {
+            throw new IllegalStateException("Asset not available.");
         }
-        if(securityLevel == 3 && !uid.startsWith("KRG")) {
-            throw new SecurityException();
+        if (securitylevel == 3 && !studentid.startsWith("KRG")) {
+            throw new SecurityException("Restricted asset. UID not authorized.");
         }
     }
 }
 
 class CheckoutRequest {
-    String uid;
-    String assetId;
-    int hoursRequested;
-    void validate() throws IllegalArgumentException {}
+    String studentid;
+    String assetid;
+    int requestedhours;
+
+    public CheckoutRequest(String studentid, String assetid, int requestedhours) {
+        this.studentid = studentid;
+        this.assetid = assetid;
+        this.requestedhours = requestedhours;
+    }
 }
 
 class ValidationUtil {
-    static void validateUid(String uid) {
-                    if (uid == null || uid.length() < 8 || uid.length() > 12 || uid.contains(" "))
-                throw new IllegalArgumentException("Invalid UID.");
-    }
-    static void validateAssetId(String assetId) { if (assetId == null || !assetId.startsWith("LAB-"))
-                throw new IllegalArgumentException("Invalid AssetId.");
+
+    public static void validatestudentid(String studentid) {
+        if (studentid == null || studentid.length() < 8 || studentid.length() > 12 || studentid.contains(" ")) {
+            throw new IllegalArgumentException("Invalid UID format.");
         }
-    static void validateHours(int hrs) { if (hrs < 1 || hrs > 6)
-                throw new IllegalArgumentException("Invalid hours (1–6 allowed).");}
+    }
+
+    public static void validateassetid(String assetid) {
+        if (assetid == null || !assetid.matches("LAB-\\d+")) {
+            throw new IllegalArgumentException("Invalid Asset ID format.");
+        }
+    }
+
+    public static void validatehours(int hours) {
+        if (hours < 1 || hours > 6) {
+            throw new IllegalArgumentException("Hours must be between 1 and 6.");
+        }
+    }
 }
 
-import java.util.HashMap;
 class AssetStore {
-    HashMap<String, Asset> assets = new HashMap<>();
-    Asset findAsset(String id) { 
-         Asset asset = assets.get(id);
-         if (asset == null)
-                throw new NullPointerException("Asset not found: " + id);
-            return asset;
-     }
-    void markBorrowed(Asset a) {
-        if(a.available == false) {
-            throw new IllegalStateException("Asset already borrowed: " + a.assetId);
-        }
-        a.available = false;
-    }
-}
+    Asset[] assets;
 
-class CheckoutService {
-    AssetStore store;
-    Student student;
-    Asset asset;
-    String checkout(CheckoutRequest req)
-        throws IllegalArgumentException, IllegalStateException, SecurityException, NullPointerException {
-        return null;
+    public AssetStore(Asset[] assets) {
+        this.assets = assets;
+    }
+
+    public Asset getasset(String assetid) {
+        for (Asset asset : assets) {
+            if (asset.id.equals(assetid)) {
+                return asset;
+            }
+        }
+        throw new NullPointerException("Asset not found: " + assetid);
+    }
+
+    public void borrowasset(Asset asset) {
+        if (!asset.isavailable) {
+            throw new IllegalStateException("Asset already borrowed.");
+        }
+        asset.isavailable = false;
     }
 }
 
 class AuditLogger {
-    static void log(String msg) {}
-    static void logError(Exception e) {}
+    public static void log(String message) {
+    }
+
+    public static void logerror(Exception e) {
+    }
+}
+
+class CheckoutService {
+
+    Student[] studentrecords;
+    AssetStore assetinventory;
+
+    public CheckoutService(Student[] studentrecords, AssetStore assetinventory) {
+        this.studentrecords = studentrecords;
+        this.assetinventory = assetinventory;
+    }
+
+    public Student findstudent(String studentid) {
+        for (Student student : studentrecords) {
+            if (student.studentid.equals(studentid)) {
+                return student;
+            }
+        }
+        throw new NullPointerException("Student not found: " + studentid);
+    }
+
+    public String processcheckout(CheckoutRequest request)
+            throws IllegalArgumentException, IllegalStateException,
+            SecurityException, NullPointerException {
+
+        ValidationUtil.validatestudentid(request.studentid);
+        ValidationUtil.validateassetid(request.assetid);
+        ValidationUtil.validatehours(request.requestedhours);
+
+        Student student = findstudent(request.studentid);
+        Asset asset = assetinventory.getasset(request.assetid);
+
+        student.checkeligibility();
+        asset.checkaccess(request.studentid);
+
+        int finalhours = request.requestedhours;
+
+        if (asset.name.contains("Cable") && finalhours > 3) {
+            finalhours = 3;
+        }
+
+        assetinventory.borrowasset(asset);
+        student.increaseborrowcount();
+
+        return "TXN-20260221-" + asset.id + "-" + student.studentid;
+    }
 }
 
 public class Main {
+
     public static void main(String[] args) {
-        Student s = new Student();
-        Asset a = new Asset();
-        AssetStore store = new AssetStore();
-        CheckoutRequest req = new CheckoutRequest();
-        CheckoutService service = new CheckoutService();
-        try {
-            String receipt = service.checkout(req);
-            System.out.println("Checkout successful: " + receipt);
-        } catch (IllegalArgumentException e) {
-            AuditLogger.logError(e);
-        } catch (NullPointerException e) {
-            AuditLogger.logError(e);
-        } catch (SecurityException e) {
-            AuditLogger.logError(e);
-        } catch (IllegalStateException e) {
-            AuditLogger.logError(e);
-        } finally {
-            AuditLogger.log("Attempt finished for UID=" + req.uid + ", asset=" + req.assetId);
+
+        Student[] studentrecords = {
+                new Student("KRG711A", "Krish", 0, 0),
+                new Student("KRG601A", "saiyam", 50, 0),
+                new Student("KRG711B", "janish", 0, 2)
+        };
+
+        Asset[] assets = {
+                new Asset("LAB-101", "HDMI Cable", true, 1),
+                new Asset("LAB-102", "Raspberry Pi Kit", true, 3),
+                new Asset("LAB-103", "Ethernet Cable", false, 1)
+        };
+
+        AssetStore assetinventory = new AssetStore(assets);
+        CheckoutService service = new CheckoutService(studentrecords, assetinventory);
+
+        CheckoutRequest[] requests = {
+                new CheckoutRequest("KRG711A", "LAB-101", 5),
+                new CheckoutRequest("KRG711A", "LAB-XYZ", 2),
+                new CheckoutRequest("KRG601A", "LAB-102", 4)
+        };
+
+        for (CheckoutRequest request : requests) {
+            try {
+                service.processcheckout(request);
+            }
+            catch (IllegalArgumentException e) {
+                AuditLogger.logerror(e);
+            }
+            catch (NullPointerException e) {
+                AuditLogger.logerror(e);
+            }
+            catch (SecurityException e) {
+                AuditLogger.logerror(e);
+            }
+            catch (IllegalStateException e) {
+                AuditLogger.logerror(e);
+            }
+            finally {
+                AuditLogger.log("Attempt finished for UID=" + request.studentid + ", asset=" + request.assetid);
+            }
         }
     }
 }
